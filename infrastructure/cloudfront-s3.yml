@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to provision an S3 bucket for static website hosting and a CloudFront distribution for the React app.
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Name for the S3 bucket to host the web app
+
+Resources:
+  WebAppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      AccessControl: Private
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  WebAppBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebAppBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action: "s3:GetObject"
+            Resource: !Sub "${WebAppBucket.Arn}/*"
+
+  CloudFrontOAI:
+    Type: AWS::CloudFront::OriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Access Identity for S3 bucket
+
+  WebAppDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt WebAppBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAI}"
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+
+Outputs:
+  BucketName:
+    Description: Name of the S3 bucket hosting the web app
+    Value: !Ref WebAppBucket
+  CloudFrontDistributionId:
+    Description: The unique identifier for the CloudFront distribution serving your web application.
+    Value: !Ref WebAppDistribution
+  CloudFrontDomainName:
+    Description: The domain name assigned by CloudFront to access your web application.
+    Value: !GetAtt WebAppDistribution.DomainName
